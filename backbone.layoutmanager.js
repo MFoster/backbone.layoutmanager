@@ -1,5 +1,5 @@
 /*!
- * backbone.layoutmanager.js v0.6.6
+ * backbone.layoutmanager.js v0.7.0pre
  * Copyright 2012, Tim Branyen (@tbranyen)
  * backbone.layoutmanager.js may be freely distributed under the MIT license.
  */
@@ -109,11 +109,11 @@ var LayoutManager = Backbone.View.extend({
       // If the views are an array, iterate and remove each individually.
       if (_.isArray(this.views[name])) {
         _.each(this.views[name], function(view) {
-          view.remove();
+          //view.remove();
         });
       // Otherwise it's a single view and can safely call remove.
       } else {
-        this.views[name].remove();
+        //this.views[name].remove();
       }
     }
 
@@ -144,10 +144,12 @@ var LayoutManager = Backbone.View.extend({
       // Break this callback out so that its not duplicated inside the 
       // following safety try/catch.
       function renderCallback() {
+        var parentElem = root.__manager__.shadow || root.el;
+
         // List items should not be re-added, unless they have `keep: true`
         // set.
         if ((!append || view.keep) || !manager.hasRendered) {
-          options.partial(root.el, name, view.el, append);
+          options.partial(parentElem, name, view.el, append);
         }
 
         // Ensure events are always correctly bound after rendering.
@@ -255,6 +257,12 @@ var LayoutManager = Backbone.View.extend({
 
       // Return the deferred.
       return manager.renderDeferred;
+    }
+
+    // Create a new shadow element to use instead of hitting the DOM directly
+    // if the View has already rendered.  This is a performance optimization.
+    if (manager.hasRendered && !manager.append) {
+      manager.shadow = this.$el.clone();
     }
 
     // Disable the ability for any new sub-views to be added.
@@ -385,12 +393,14 @@ var LayoutManager = Backbone.View.extend({
     // proceed.  Context argument is first, since it is bound for
     // partial application reasons.
     function done(context, contents) {
+      var parentElem = root.__manager__.shadow || root.el;
+
       // Ensure the cache is up-to-date.
       LayoutManager.cache(url, contents);
 
       // Render the View into the el property.
       if (contents) {
-        options.html(root.el, options.render(contents, context));
+        options.html(parentElem, options.render(contents, context));
       }
 
       // Resolve only the fetch (used internally) deferred with the View
@@ -565,12 +575,18 @@ var LayoutManager = Backbone.View.extend({
     // Always use this render function when using LayoutManager.
     view._render = function(manage) {
       var renderDeferred;
+      var manager = this.__manager__;
       // Cache these properties.
       var beforeRender = this._options().beforeRender;
       var afterRender = this._options().afterRender;
 
       // Ensure all subViews are properly scrubbed.
       this._removeViews();
+
+      if (manager.shadow) {
+        this.__manager__.old = this.$el;
+        this.setElement(manager.shadow[0]);
+      }
 
       // If a beforeRender function is defined, call it.
       if (_.isFunction(beforeRender)) {
@@ -594,11 +610,17 @@ var LayoutManager = Backbone.View.extend({
         // This can be called immediately if the conditions allow, or it will
         // be deferred until a parent has finished rendering.
         var done = function() {
+          // ReplaceWith?
+          if (manager.shadow) {
+            manager.old.replaceWith(manager.shadow[0]);
+            delete manager.shadow;
+          }
+
           // Ensure events are always correctly bound after rendering.
           view.delegateEvents();
 
           // Set the view hasRendered.
-          view.__manager__.hasRendered = true;
+          manager.hasRendered = true;
 
           // If an afterRender function is defined, call it.
           if (_.isFunction(afterRender)) {
@@ -686,7 +708,7 @@ var LayoutManager = Backbone.View.extend({
 
     // Iterate over all of the view's subViews.
     root.getViews().each(function(view) {
-      LayoutManager._removeView(view, true);
+      view.remove();
     });
   },
 
